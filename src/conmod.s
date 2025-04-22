@@ -298,16 +298,17 @@ change_function
 change_function_end
 		rts
 
-change_cursor
-		moveq	#18,d0			-Bn
-		sub.b	(option_b_flag,a6),d0
-		bmi	@f
-
-		move	d0,-(sp)
-		DOS	_CONCTRL
-		addq.l	#2,sp
-@@
-		rts
+;-Bn ... カーソル表示、非表示
+change_cursor:
+  move.b (option_b_flag,a6),d1
+  bmi @f
+    moveq #18,d0
+    sub.b d1,d0   ;-B0 -> 18=非表示  -B1 -> 17=表示
+    move d0,-(sp)
+    DOS _CONCTRL
+    addq.l #2,sp
+  @@:
+  rts
 
 change_crtmod
 		move	#$100,d6		-C
