@@ -17,7 +17,7 @@
 ;You should have received a copy of the GNU General Public License
 ;along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-VERSION_STRING: .reg '0.28'
+VERSION_STRING: .reg '1.0.0-beta.1'
 
 
 .include console.mac
@@ -519,7 +519,7 @@ dos_conctrl_
 		rts
 
 unknown_value
-		pea	(unknown,pc)
+		pea	(unknown_value_mes,pc)
 		DOS	_PRINT
 		bra	print_crlf_and_return
 
@@ -565,12 +565,12 @@ get_usemode
 		addq.l	#4,sp
 		rts
 
-usemode_table
-		.dc	 mode_0-usemode_table
-		.dc	 mode_1-usemode_table
-		.dc	 mode_2-usemode_table
-		.dc	 mode_3-usemode_table
-		.dc	unknown-usemode_table
+usemode_table:
+  .dc mode_0-usemode_table
+  .dc mode_1-usemode_table
+  .dc mode_2-usemode_table
+  .dc mode_3-usemode_table
+  .dc unknown_value_mes-usemode_table
 
 ; [ IOCS  CRTMOD ] -----------------------------
 
@@ -877,35 +877,38 @@ hex_table
 
 value_buf
 		.dc.b	0,0,0,0,' : ',0
-title_mes
-		.dc.b	'CONMOD version ',VERSION_STRING
-		.dc.b	' February 13th,1995 Tachibana Eririn.',CR,LF,0
-usage_mes
-		.dc.b	' usage:conmod [-Q] [-GMn] [-TMn] [-n] [-Fn] [-Cn] [-Dn] [-GP] [-TP]',CR,LF
-		.dc.b	' options:',CR,LF
-		.dc.b	'	-Q		設定状態を表示しない',CR,LF
-		.dc.b	'	-GMn(0-3)	グラフィック使用状況を変更する',CR,LF
-		.dc.b	'	-TMn(0-3)	テキスト使用状況を変更する',CR,LF
-		.dc.b	'	-n(0-5)		画面モードを変更する',CR,LF
-		.dc.b	'	-Fn(0-3)	ファンクションキー行モードを変更する',CR,LF
-		.dc.b	'	-Bn(0-1)	カーソルの表示を変更する',CR,LF
-		.dc.b	'	-Cn(0-19)	ＣＲＴモードを変更する',CR,LF
-		.dc.b	'	-Dn(0-19)	〃(画面の初期化もする)',CR,LF
-		.dc.b	'	-GP		グラフィックパレットを初期化する',CR,LF
-		.dc.b	'	-TP		テキストパレットを初期化する',CR,LF
-		.dc.b	0
-option_err_mes
-		.dc.b	'変なオプションなの',CR,LF,0
-value_over_mes
-		.dc.b	'数字がおっきすぎるの',CR,LF,0
-value_error_mes
-		.dc.b	'数字をかいてね',CR,LF,0
-g_used_mes
-		.dc.b	'GVRAM は使ってるの',CR,LF,0
-gm_not_keeped_mes
-		.dc.b	'GM がいないから16色常駐パレットは使えないの',CR,LF,0
-unknown
-		.dc.b	'未定義',0
+
+title_mes:
+  .dc.b 'CONMOD version ',VERSION_STRING
+  .dc.b '  Copyright (C) 2025 TcbnErik.',CR,LF,0
+
+usage_mes:
+  .dc.b 'usage: conmod [-Q] [-GMn] [-TMn] [-n] [-Fn] [-Cn] [-Dn] [-GP] [-TP]',CR,LF
+  .dc.b 'options:',CR,LF
+  .dc.b '  -Q         設定状態を表示しない',CR,LF
+  .dc.b '  -GMn(0-3)  グラフィック使用状況を変更する',CR,LF
+  .dc.b '  -TMn(0-3)  テキスト使用状況を変更する',CR,LF
+  .dc.b '  -n(0-5)    画面モードを変更する',CR,LF
+  .dc.b '  -Fn(0-3)   ファンクションキー行モードを変更する',CR,LF
+  .dc.b '  -Bn(0-1)   カーソルの表示を変更する',CR,LF
+  .dc.b '  -Cn(0-19)  CRT モードを変更する',CR,LF
+  .dc.b '  -Dn(0-19)  CRT モードを変更する(画面の初期化もする)',CR,LF
+  .dc.b '  -GP        グラフィックパレットを初期化する',CR,LF
+  .dc.b '  -TP        テキストパレットを初期化する',CR,LF
+  .dc.b 0
+
+option_err_mes:
+  .dc.b 'オプションの指定が正しくありません。',CR,LF,0
+value_over_mes:
+  .dc.b '数値が大きすぎます。',CR,LF,0
+value_error_mes:
+  .dc.b '数値が指定されていません。',CR,LF,0
+g_used_mes:
+  .dc.b 'GVRAM は使用中です。',CR,LF,0
+gm_not_keeped_mes:
+  .dc.b 'GraphicMaskが組み込まれていないため、16色常駐パレットは使えません。',CR,LF,0
+unknown_value_mes:
+  .dc.b '未定義',0
 
 _16
 		.dc.b	'   16色',0
@@ -1001,7 +1004,7 @@ gm_automask_unkworn
 gm_pallete
 		.dc.b	' / 常駐パレット ',0
 gm_call_err_mes
-		.dc.b	'GM 拡張コールがサポートされていません',0
+		.dc.b	'GraphicMask拡張コールがサポートされていません',0
 
 option_flag
 		.dcb.b	option_flag_size,-1
