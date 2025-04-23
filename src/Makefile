@@ -9,7 +9,7 @@ SRC_DIR = ../src
 -include $(SRCDIR_MK)
 
 AS = has060
-ASFLAGS = -w3 -c3
+ASFLAGS = -w2 -c3 -i./include
 LD ?= hlk
 LDFLAGS =
 CV = cv
@@ -28,7 +28,7 @@ DOCS = README.txt CHANGELOG.txt LICENSE
 
 
 .PHONY: all archive clean
-.PRECIOUS: %.o
+.PRECIOUS: %.o %.x
 
 all: $(TARGET)
 

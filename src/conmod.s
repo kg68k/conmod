@@ -20,24 +20,28 @@
 VERSION_STRING: .reg '1.0.0-beta.1'
 
 
+.include macro.mac
 .include console.mac
 .include doscall.mac
 .include iocscall.mac
 .include gm_internal.mac
 
+CRTMOD_MAX: .equ 47
+
 
 .offset 0
-gm_flag:        .ds.b 1  ;-1:gm未常駐 0:gm常駐
 option_q_flag:  .ds.b 1  ;-1:表示する 0:表示しない
 option_gm_flag: .ds.b 1
 option_tm_flag: .ds.b 1
 option_n_flag:  .ds.b 1
 option_f_flag:  .ds.b 1
 option_b_flag:  .ds.b 1
-option_c_flag:  .ds.b 1
-option_d_flag:  .ds.b 1
+.even
+option_cd_mode: .ds.b 1  ;-1:無指定 $01=-Cn $00=-Dn
+option_crtmod:  .ds.b 1  ;-Cn/-Dnのnの値
 option_gp_flag: .ds.b 1
 option_tp_flag: .ds.b 1
+gm_flag:        .ds.b 1  ;-1:gm未常駐 0:gm常駐
 option_flag_size:
 
 
@@ -116,7 +120,6 @@ commandline_loop
 		cmpi.b	#'B',d0
 		beq	option_b
 
-		moveq	#19,d1
 		cmpi.b	#'C',d0
 		beq	option_c
 		cmpi.b	#'D',d0
@@ -148,17 +151,18 @@ option_t
 		clr.b	(option_tp_flag,a6)
 		bra	commandline_loop
 
-option_c
-		bsr	get_value
-		move.b	d0,(option_c_flag,a6)
-		st	(option_d_flag,a6)
-		bra	commandline_loop
+option_c:
+  moveq #$01,d1
+  bra @f
+option_d:
+  moveq #$00,d1
+@@:
+  move.b d1,(option_cd_mode,a6)
 
-option_d
-		bsr	get_value
-		move.b	d0,(option_d_flag,a6)
-		st	(option_c_flag,a6)
-		bra	commandline_loop
+  st d1  ;d1.w = $00ff, 0～CRTMOD_MAXの範囲外は未対応だが、未知の拡張に備えて受け付ける
+  bsr get_value
+  move.b d0,(option_crtmod,a6)
+  bra commandline_loop
 
 option_f
 		moveq	#3,d1
@@ -178,13 +182,11 @@ get_value
 
 		move.b	(a2)+,d0
 		subi.b	#'0',d0
-		bmi	value_error
 		cmpi.b	#9,d0
 		bhi	value_error
 @@
 		move.b	(a2)+,d2
 		subi.b	#'0',d2
-		bmi	value_end
 		cmpi.b	#9,d2
 		bhi	value_end
 
@@ -194,10 +196,8 @@ get_value
 		bne	value_over		16bitの範囲を越えた
 		swap	d0
 		add	d2,d0
-		bcs	value_over
-
-		bra	@b
-
+		bcc	@b
+		bra	value_over
 value_end
 		subq.l	#1,a2
 
@@ -310,32 +310,25 @@ change_cursor:
   @@:
   rts
 
-change_crtmod
-		move	#$100,d6		-C
-		move.b	(option_c_flag,a6),d6
-		bpl	@f
+;-Cn / -Dn ... CRTモード変更
+change_crtmod:
+  move (option_cd_mode,a6),d6  ;-Cn/-Dn
+  bmi 9f
+    bsr check_g_use_mode
+    bmi 9f
+      moveq #-1,d1
+      IOCS _CRTMOD
+      move d0,d7  ;変更前のモード
+      bsr get_cursor_position
+      move d6,d1
+      IOCS _CRTMOD
 
-		moveq	#0,d6			-D
-		move.b	(option_d_flag,a6),d6
-		bmi	change_crtmod_end
-@@
-		bsr	check_g_use_mode
-		bmi	change_crtmod_end
-
-		moveq	#-1,d1
-		IOCS	_CRTMOD
-		move	d0,d7			変更前のモード
-		bsr	get_cursor_position
-
-		move	d6,d1
-		IOCS	_CRTMOD
-
-		cmp.b	d6,d7
-		bne	change_crtmod_end	違うモードに変更した場合はテキストはクリアされる
-
-		bsr	restore_cursor_position
-change_crtmod_end
-		rts
+      cmp.b d6,d7
+      bne @f  ;違うモードに変更した場合はテキストはクリアされる
+        bsr restore_cursor_position
+      @@:
+  9:
+  rts
 
 change_g_palette
 		clr.l	-(sp)
@@ -575,78 +568,109 @@ usemode_table:
 
 ; [ IOCS  CRTMOD ] -----------------------------
 
-print_crtmod
-		link	a6,#0
+_15kHz: .equ 0
+_24kHz: .equ 1
+_31kHz: .equ 2
+_31VGA: .equ 3
 
-		pea	(crtmod,pc)
-		DOS	_PRINT
+_256x256:   .equ 0
+_512x512:   .equ 1
+_768x512:   .equ 2
+_1024x424:  .equ 3
+_1024x848:  .equ 4
+_640x480:   .equ 5
+_384x256:   .equ 6
+_1024x1024: .equ 7  ;実画面サイズ専用
+_256x256sq: .equ 8
+_512x512sq: .equ 9
+_512x256:   .equ 10
 
-		moveq	#-1,d1
-		IOCS	_CRTMOD
-		move	d0,d1
+c16:  .equ 0
+c256: .equ 1
+c64k: .equ 2
 
-		moveq	#19,d0			Compact で追加された vga_640x480
-		bsr	print_value
-		bne	unknown_value
+CRTSPEC: .macro hz,disp,size,color
+  .dc color<<12+size<<8+disp<<4+hz
+.endm
 
-		pea	(crtmod_table,pc)
-		cmpi	#17,d1
-		bcc	@f			24kHz
+GET_CRTSPEC: .macro src_dreg,temp_areg,dst_dreg
+  add src_dreg,src_dreg
+  lea (CrtSpecTable,pc),temp_areg
+  move (temp_areg,src_dreg.w),dst_dreg
+.endm
 
-		addq.l	#3,(sp)			31kHz
+print_crtmod:
+  link a6,#0
+  bsr printCrtModHeaderAndValue
+  bne unknown_value
+  unlk a6
 
-		btst	#0,d1
-		beq	@f
+  bra printCrtModDetail
 
-		addq.l	#3,(sp)			15kHz
-@@
-		DOS	_PRINT			周波数
+printCrtModHeaderAndValue:
+  pea (crtmod,pc)
+  DOS _PRINT
+  addq.l #4,sp
 
-		pea	(crtmod_1,pc)
-		DOS	_PRINT			'kHz / '
+  moveq #-1,d1
+  IOCS _CRTMOD
+  move d0,d1
 
-		move.b	(crtmod_to_size,pc,d1.w),d0
-		mulu	#9,d0
-		pea	(crtmod_size_table,pc,d0.w)
+  move #CRTMOD_MAX,d0
+  bra print_value
 
-		DOS	_PRINT			表示画面サイズ
+printCrtModDetail:
+  link a6,#-64
+  GET_CRTSPEC d1,a0,d2
+  lea (sp),a1
 
-		lea	(crtmod_size_1024,pc),a0
-		move.l	#0b1111_0000_0000_0000_1111,d7
+  moveq #$f,d0  ;周波数
+  and.b d2,d0
+  lsl #3,d0
+  lea (CrtHzTable,pc),a0
+  adda.l d0,a0
+  STRCPY a0,a1,-1
+  bsr copySlash
 
-		btst	d1,d7
-		bne	@f			実画面1024x1024
+  lsr #4,d2  ;表示画面サイズ
+  bsr copyScreenSize
 
-		lea	(crtmod_size_512,pc),a0
-@@
-		pea	(a0)
-		DOS	_PRINT			実画面サイズ
+  move.b #'(',(a1)+
+  lsr #4,d2  ;実画面サイズ
+  bsr copyScreenSize
+  move.b #')',(a1)+
+  bsr copySlash
 
-		lea	(_16,pc),a0
-		btst	d1,d7
-		bne	@f
+  lsr #4,d2  ;色数
+  lsl #3,d2
+  lea (ColorTable,pc),a0
+  adda.l d2,a0
+  STRCPY a0,a1,-1
 
-		lea	(_256,pc),a0
-		cmpi	#12,d1			8-11
-		bmi	@f
+  lea (crlf,pc),a0
+  STRCPY a0,a1
 
-		lea	(_65536,pc),a0		12-15
-@@
-		pea	(a0)
-		DOS	_PRINT			表示色
+  pea (sp)
+  DOS _PRINT
+  addq.l #4,sp
 
-		bra	print_crlf_and_return
+  unlk a6
+  rts
 
-crtmod_to_size
-		.dc.b	1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,2,3,4
-crtmod_size_table
-		.dc.b	' 256x256',0
-		.dc.b	' 512x512',0
-		.dc.b	' 768x512',0
-		.dc.b	'1024x424',0
-		.dc.b	'1024x848',0
-		.dc.b	' 640x480',0
-		.even
+copyScreenSize:
+  moveq #$f,d0
+  and.b d2,d0
+  lea (DispSizeTable,pc),a0
+  move.b (a0,d0.w),d0
+  adda d0,a0
+  STRCPY a0,a1,-1
+  rts
+
+copySlash:
+  lea (Slash,pc),a0
+  STRCPY a0,a1,-1
+  rts
+
 
 ; [ GRAPHIC IOCS ] -----------------------------
 
@@ -876,8 +900,64 @@ hex_table
 
 .data
 
-value_buf
-		.dc.b	0,0,0,0,' : ',0
+.even
+CrtSpecTable:
+  CRTSPEC _31kHz,_512x512,  _1024x1024,c16   ; 0
+  CRTSPEC _15kHz,_512x512,  _1024x1024,c16   ; 1
+  CRTSPEC _31kHz,_256x256,  _1024x1024,c16   ; 2
+  CRTSPEC _15kHz,_256x256,  _1024x1024,c16   ; 3
+  CRTSPEC _31kHz,_512x512,  _512x512,  c16   ; 4
+  CRTSPEC _15kHz,_512x512,  _512x512,  c16   ; 5
+  CRTSPEC _31kHz,_256x256,  _512x512,  c16   ; 6
+  CRTSPEC _15kHz,_256x256,  _512x512,  c16   ; 7
+  CRTSPEC _31kHz,_512x512,  _512x512,  c256  ; 8
+  CRTSPEC _15kHz,_512x512,  _512x512,  c256  ; 9
+  CRTSPEC _31kHz,_256x256,  _512x512,  c256  ;10
+  CRTSPEC _15kHz,_256x256,  _512x512,  c256  ;11
+  CRTSPEC _31kHz,_512x512,  _512x512,  c64k  ;12
+  CRTSPEC _15kHz,_512x512,  _512x512,  c64k  ;13
+  CRTSPEC _31kHz,_256x256,  _512x512,  c64k  ;14
+  CRTSPEC _15kHz,_256x256,  _512x512,  c64k  ;15
+  CRTSPEC _31kHz,_768x512,  _1024x1024,c16   ;16
+  CRTSPEC _24kHz,_1024x424, _1024x1024,c16   ;17
+  CRTSPEC _24kHz,_1024x848, _1024x1024,c16   ;18
+  CRTSPEC _31VGA,_640x480,  _1024x1024,c16   ;19  Compact(ROM 1.2)以降で有効
+  CRTSPEC _31kHz,_768x512,  _512x512,  c256  ;20  以下、X68030(ROM 1.3)で有効
+  CRTSPEC _24kHz,_1024x424, _512x512,  c256  ;21
+  CRTSPEC _24kHz,_1024x848, _512x512,  c256  ;22
+  CRTSPEC _31VGA,_640x480,  _512x512,  c256  ;23
+  CRTSPEC _31kHz,_768x512,  _512x512,  c64k  ;24
+  CRTSPEC _24kHz,_1024x424, _512x512,  c64k  ;25
+  CRTSPEC _24kHz,_1024x848, _512x512,  c64k  ;26
+  CRTSPEC _31VGA,_640x480,  _512x512,  c64k  ;27
+  CRTSPEC _31kHz,_384x256,  _1024x1024,c16   ;28  以下、XEiJ(ROM 1.6),crtmod16.xによる拡張
+  CRTSPEC _31kHz,_384x256,  _512x512,  c16   ;29
+  CRTSPEC _31kHz,_384x256,  _512x512,  c256  ;30
+  CRTSPEC _31kHz,_384x256,  _512x512,  c64k  ;31
+  CRTSPEC _31kHz,_512x512sq,_1024x1024,c16   ;32
+  CRTSPEC _31kHz,_512x512sq,_512x512,  c16   ;33
+  CRTSPEC _31kHz,_512x512sq,_512x512,  c256  ;34
+  CRTSPEC _31kHz,_512x512sq,_512x512,  c64k  ;35
+  CRTSPEC _31kHz,_256x256sq,_1024x1024,c16   ;36
+  CRTSPEC _31kHz,_256x256sq,_512x512,  c16   ;37
+  CRTSPEC _31kHz,_256x256sq,_512x512,  c256  ;38
+  CRTSPEC _31kHz,_256x256sq,_512x512,  c64k  ;39
+  CRTSPEC _31kHz,_512x256,  _1024x1024,c16   ;40
+  CRTSPEC _31kHz,_512x256,  _512x512,  c16   ;41
+  CRTSPEC _31kHz,_512x256,  _512x512,  c256  ;42
+  CRTSPEC _31kHz,_512x256,  _512x512,  c64k  ;43
+  CRTSPEC _31kHz,_512x256,  _1024x1024,c16   ;44
+  CRTSPEC _31kHz,_512x256,  _512x512,  c16   ;45
+  CRTSPEC _31kHz,_512x256,  _512x512,  c256  ;46
+  CRTSPEC _31kHz,_512x256,  _512x512,  c64k  ;47
+
+.even
+value_buf:
+  .dc.b 0,0,0,0,' : ',0
+
+.even
+option_flag:
+  .dcb.b option_flag_size,-1
 
 title_mes:
   .dc.b 'CONMOD version ',VERSION_STRING
@@ -886,16 +966,16 @@ title_mes:
 usage_mes:
   .dc.b 'usage: conmod [-Q] [-GMn] [-TMn] [-n] [-Fn] [-Cn] [-Dn] [-GP] [-TP]',CR,LF
   .dc.b 'options:',CR,LF
-  .dc.b '  -Q         設定状態を表示しない',CR,LF
-  .dc.b '  -GMn(0-3)  グラフィック使用状況を変更する',CR,LF
-  .dc.b '  -TMn(0-3)  テキスト使用状況を変更する',CR,LF
-  .dc.b '  -n(0-5)    画面モードを変更する',CR,LF
-  .dc.b '  -Fn(0-3)   ファンクションキー行モードを変更する',CR,LF
-  .dc.b '  -Bn(0-1)   カーソルの表示を変更する',CR,LF
-  .dc.b '  -Cn(0-19)  CRT モードを変更する',CR,LF
-  .dc.b '  -Dn(0-19)  CRT モードを変更する(画面の初期化もする)',CR,LF
-  .dc.b '  -GP        グラフィックパレットを初期化する',CR,LF
-  .dc.b '  -TP        テキストパレットを初期化する',CR,LF
+  .dc.b '  -Q          設定状態を表示しない',CR,LF
+  .dc.b '  -GMn(0-3)   グラフィック使用状況を変更する',CR,LF
+  .dc.b '  -TMn(0-3)   テキスト使用状況を変更する',CR,LF
+  .dc.b '  -n(0-5)     画面モードを変更する',CR,LF
+  .dc.b '  -Fn(0-3)    ファンクションキー行モードを変更する',CR,LF
+  .dc.b '  -Bn(0-1)    カーソルの表示を変更する',CR,LF
+  .dc.b '  -Cn(0-255)  CRT モードを変更する',CR,LF
+  .dc.b '  -Dn(0-255)  CRT モードを変更する(画面の初期化もする)',CR,LF
+  .dc.b '  -GP         グラフィックパレットを初期化する',CR,LF
+  .dc.b '  -TP         テキストパレットを初期化する',CR,LF
   .dc.b 0
 
 option_err_mes:
@@ -964,18 +1044,39 @@ mode_1		.dc.b	'システムが使用中',0
 mode_2		.dc.b	'アプリケーションが使用中',0
 mode_3		.dc.b	'破壊',0
 
-crtmod
-		.dc.b	'[ IOCS  CRTMOD ] ',0
-crtmod_1
-		.dc.b	'kHz / ',0
-crtmod_table
-		.dc.b	'24',0
-		.dc.b	'31',0
-		.dc.b	'15',0
-crtmod_size_1024
-		.dc.b	'(1024x1024) / ',0
-crtmod_size_512
-		.dc.b	'( 512x 512) / ',0
+crtmod:
+  .dc.b '[ IOCS  CRTMOD ] ',0
+
+CrtHzTable:
+  .dc.b '15kHz',0,0,0
+  .dc.b '24kHz',0,0,0
+  .dc.b '31kHz',0,0,0
+  .dc.b '31kHz(VGA)',0
+
+DispSizeTable:
+  .irp label,100f,101f,102f,103f,104f,105f,106f,107f,108f,109f,110f
+    .dc.b label-DispSizeTable
+  .endm
+100: .dc.b '256x256',0
+101: .dc.b '512x512',0
+102: .dc.b '768x512',0
+103: .dc.b '1024x424',0
+104: .dc.b '1024x848',0
+105: .dc.b '640x480',0
+106: .dc.b '384x256',0
+107: .dc.b '1024x1024',0
+108: .dc.b '256x256(正方形)',0
+109: .dc.b '512x512(正方形)',0
+110: .dc.b '512x256',0
+
+Square: .dc.b '(正方形)',0
+
+ColorTable:
+  .dc.b '16色',0,0,0,0
+  .dc.b '256色',0,0,0
+  .dc.b '65536色',0
+
+Slash: .dc.b ' / ',0
 
 gmask
 		.dc.b	'[ GRAPHIC MASK ] Version '
@@ -1007,8 +1108,5 @@ gm_pallete
 gm_call_err_mes
 		.dc.b	'GraphicMask拡張コールがサポートされていません',0
 
-option_flag
-		.dcb.b	option_flag_size,-1
 
-
-.end
+.end Start
