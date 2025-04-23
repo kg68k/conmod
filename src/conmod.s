@@ -24,7 +24,7 @@ VERSION_STRING: .reg '1.0.0-beta.1'
 .include console.mac
 .include doscall.mac
 .include iocscall.mac
-.include gm_internal.mac
+.include graphicmask.mac
 
 CRTMOD_MAX: .equ 47
 

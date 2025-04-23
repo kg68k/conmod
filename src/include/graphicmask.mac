@@ -1,0 +1,47 @@
+.nlist
+
+;graphicmask.mac - RUKA assembler macro for X680x0/Human68k(v3) by TcbnErik
+;Last-modified: 2025-04-23
+;
+;Copying and distribution of this file, with or without modification,
+;are permitted in any medium without royalty provided the copyright
+;notice and this notice are preserved.  This file is offered as-is,
+;without any warranty.
+
+
+.ifndef __graphicmask_mac__
+        __graphicmask_mac__:=1
+
+
+* IOCS _TGUSEMD extension call identifier
+
+_GM_INTERNAL_MODE: .equ 'gm'
+
+
+* IOCS _TGUSEMD extension call number
+
+_GM_VERSION_NUMBER:     .equ $ff80
+_GM_MASK_STATE:         .equ $ff81
+_GM_GNC_STATE:          .equ $ff82
+_GM_AUTO_STATE:         .equ $ff83
+_GM_GRAPHIC_MODE_STATE: .equ $ff84
+_GM_ACTIVE_STATE:       .equ $ff85
+
+_GM_MASK_REQUEST:       .equ $ff88
+_GM_MASK_SET:           .equ $ff89
+_GM_MASK_CLEAR:         .equ $ff8a
+_GM_AUTO_DISABLE:       .equ $ff8b
+_GM_AUTO_ENABLE:        .equ $ff8c
+_GM_ACTIVE:             .equ $ff8d
+_GM_INACTIVE:           .equ $ff8e
+
+_GM_KEEP_PALETTE_GET:   .equ $ff90
+_GM_PALETTE_SAVE:       .equ $ff91
+_GM_GVRAM_SAVE:         .equ $ff92
+
+
+* End of File --------------------------------- *
+
+.endif
+
+.list
