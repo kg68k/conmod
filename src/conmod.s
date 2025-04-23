@@ -17,7 +17,7 @@
 ;You should have received a copy of the GNU General Public License
 ;along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-VERSION_STRING: .reg '1.0.0-beta.1'
+VERSION_STRING: .reg '1.0.0'
 
 
 .include macro.mac
